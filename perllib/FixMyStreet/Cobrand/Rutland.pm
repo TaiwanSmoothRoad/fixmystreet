@@ -38,4 +38,9 @@ sub disambiguate_location {
     };
 }
 
+sub pin_colour {
+    my ( $self, $p, $context ) = @_;
+    return 'green' if $p->is_fixed || $p->is_closed;
+    return 'yellow';
+}
 1;
