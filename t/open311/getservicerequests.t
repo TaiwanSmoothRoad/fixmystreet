@@ -162,6 +162,102 @@ for my $test (
     };
 }
 
+my $date = DateTime->new(
+    year => 2010,
+    month => 4,
+    day => 14,
+    hour => 6,
+    minute => 37
+);
+
+for my $test (
+  {
+      start_date => '1',
+      end_date => '',
+      desc => 'do not process if only a start_date',
+      subs => {},
+  },
+  {
+      start_date => '',
+      end_date => '1',
+      desc => 'do not process if only an end_date',
+      subs => {},
+  },
+) {
+    subtest $test->{desc} => sub {
+        my $xml = prepare_xml( $test->{subs} );
+        my $o = Open311->new(
+            jurisdiction => 'mysociety',
+            endpoint => 'http://example.com',
+            test_mode => 1,
+            test_get_returns => { 'requests.xml' => $xml}
+        );
+
+        my $update = Open311::GetServiceRequests->new(
+            start_date => $test->{start_date},
+            end_date => $test->{end_date},
+            system_user => $user,
+        );
+        my $ret = $update->create_problems( $o, $body );
+
+        is $ret, 0, 'failed correctly'
+    };
+}
+
+$date = DateTime->new(
+    year => 2010,
+    month => 4,
+    day => 14,
+    hour => 6,
+    minute => 37
+);
+
+for my $test (
+  {
+      start_date => $date->clone->add(hours => -2),
+      end_date => $date->clone->add(hours => -1),
+      desc => 'do not process if update time after end_date',
+      subs => {},
+  },
+  {
+      start_date => $date->clone->add(hours => 2),
+      end_date => $date->clone->add(hours => 4),
+      desc => 'do not process if update time before start_date',
+      subs => {},
+  },
+  {
+      start_date => $date->clone->add(hours => -2),
+      end_date => $date->clone->add(hours => 4),
+      desc => 'do not process if update time is bad',
+      subs => { update_time => '2010/12/12' },
+  },
+) {
+    subtest $test->{desc} => sub {
+        my $xml = prepare_xml( $test->{subs} );
+        my $o = Open311->new(
+            jurisdiction => 'mysociety',
+            endpoint => 'http://example.com',
+            test_mode => 1,
+            test_get_returns => { 'requests.xml' => $xml}
+        );
+
+        my $update = Open311::GetServiceRequests->new(
+            start_date => $test->{start_date},
+            end_date => $test->{end_date},
+            system_user => $user,
+        );
+        my $count = FixMyStreet::DB->resultset('Problem')->count;
+        FixMyStreet::override_config {
+            MAPIT_URL => 'http://mapit.uk/',
+        }, sub {
+            $update->create_problems( $o, $body );
+        };
+        my $after = FixMyStreet::DB->resultset('Problem')->count;
+
+        is $count, $after, 'problem not added';
+    };
+}
+
 sub prepare_xml {
     my $replacements = shift;
 
@@ -170,6 +266,7 @@ sub prepare_xml {
         lat => 51.4021,
         long => 0.01578,
         id => 123456,
+        update_time => '2010-04-14T06:37:38-08:00',
         %$replacements
     );
 
@@ -185,7 +282,7 @@ sub prepare_xml {
 <agency_responsible></agency_responsible>
 <service_notice></service_notice>
 <requested_datetime>2010-04-14T06:37:38-08:00</requested_datetime>
-<updated_datetime>2010-04-14T06:37:38-08:00</updated_datetime>
+<updated_datetime>XXX_UPDATE_TIME</updated_datetime>
 <expected_datetime>2010-04-15T06:37:38-08:00</expected_datetime>
 <lat>XXX_LAT</lat>
 <long>XXX_LONG</long>
